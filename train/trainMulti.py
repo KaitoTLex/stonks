@@ -1,130 +1,113 @@
-import gymnasium as gym
-import numpy as np
-import os
+# train_parallel.py
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from envs.stock_env import StockTradingEnv
+from env.stock_env import StockTradingEnv
 from agents.dqn_agent import DQNAgent
-from agents.mc_agent import MCAgent
+from agents.mc_agent import MonteCarloAgent
 from config import config
-import wandb
-from torch.utils.tensorboard import SummaryWriter
-
-# Lock for print sync
-print_lock = threading.Lock()
+from utils import set_seed, get_writer, init_wandb, ReplayBuffer
+from tui.tui_dashboard import render_dual_agent_dashboard
 
 
-def train_dqn():
-    wandb.init(project="stock-trading", name="DQN_Agent", reinit=True)
-    writer = SummaryWriter(log_dir="logs/dqn")
+def train_dqn_thread(dqn_history):
+    set_seed(42)
+    writer = get_writer("dqn")
+    init_wandb("DQN-Agent")
 
-    env = StockTradingEnv()
-    obs_dim = env.observation_space.shape[0] * env.observation_space.shape[1]
-    action_dim = 3
+    env = StockTradingEnv(config)
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.n
+    agent = DQNAgent(state_dim, action_dim, config)
+    replay_buffer = ReplayBuffer(config["agent"]["memory_size"])
 
-    agent = DQNAgent(obs_dim, action_dim)
-
-    episodes = config["training"]["episodes"]
-    max_steps = config["training"]["max_steps"]
-
-    for episode in range(episodes):
-        state, _ = env.reset()
-        state = state.flatten()
+    for episode in range(config["training"]["episodes"]):
+        state = env.reset()
+        env.history = {"portfolio_value": [], "price": []}  # Clear history
         total_reward = 0
-        losses = []
+        done = False
+        step = 0
 
-        for t in range(max_steps):
-            action = agent.select_action(state)
-            action_array = np.array([action] * env.action_space.n)
-            next_state, reward, done, truncated, info = env.step(action_array)
-            next_state = next_state.flatten()
-            agent.store((state, action, reward, next_state, float(done)))
-            loss = agent.train_step()
-            if loss is not None:
-                losses.append(loss)
+        while not done and step < config["training"]["max_steps"]:
+            action = agent.act(state)
+            next_state, reward, done, info = env.step(action)
+            replay_buffer.push(state, action, reward, next_state, done)
+            agent.learn(replay_buffer)
+
             state = next_state
             total_reward += reward
-            if done or truncated:
-                break
+            step += 1
 
-        avg_loss = np.mean(losses) if losses else 0
+            # Log portfolio and price history
+            env.history["portfolio_value"].append(info.get("portfolio_value", 0))
+            env.history["price"].append(info.get("price", 0))
 
-        wandb.log(
-            {
-                "episode": episode,
-                "reward": total_reward,
-                "loss": avg_loss,
-                "epsilon": agent.epsilon,
-            }
-        )
-
-        writer.add_scalar("Reward", total_reward, episode)
-        writer.add_scalar("Loss", avg_loss, episode)
-        writer.add_scalar("Epsilon", agent.epsilon, episode)
-
-        with print_lock:
-            print(
-                f"[DQN] Episode {episode+1}: Reward={total_reward:.2f}, Loss={avg_loss:.4f}, Epsilon={agent.epsilon:.4f}"
-            )
+        print(f"[DQN] Episode {episode + 1} - Reward: {total_reward:.2f}")
+        writer.add_scalar("Reward/Episode", total_reward, episode)
 
         if (episode + 1) % config["training"]["save_every"] == 0:
-            agent.save_weights(config["training"]["weights_path"])
+            agent.save(config["training"]["weights_path_dqn"])
 
+    dqn_history.update(env.history)  # Pass history back
     writer.close()
-    wandb.finish()
 
 
-def train_mc():
-    wandb.init(project="stock-trading", name="MC_Agent", reinit=True)
-    writer = SummaryWriter(log_dir="logs/mc")
+def train_mc_thread(mc_history):
+    set_seed(42)
+    writer = get_writer("mc")
+    init_wandb("MC-Agent")
 
-    env = StockTradingEnv()
-    obs_dim = env.observation_space.shape[0] * env.observation_space.shape[1]
-    action_dim = 3
+    env = StockTradingEnv(config)
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.n
+    agent = MonteCarloAgent(state_dim, action_dim, config)
 
-    agent = MCAgent(obs_dim, action_dim)
-
-    episodes = config["training"]["episodes"]
-    max_steps = config["training"]["max_steps"]
-
-    for episode in range(episodes):
-        state, _ = env.reset()
-        state = state.flatten()
+    for episode in range(config["training"]["episodes"]):
+        state = env.reset()
+        env.history = {"portfolio_value": [], "price": []}  # Clear history
+        episode_data = []
         total_reward = 0
+        done = False
+        step = 0
 
-        for t in range(max_steps):
-            action = agent.select_action(state)
-            action_array = np.array([action] * env.action_space.n)
-            next_state, reward, done, truncated, info = env.step(action_array)
-            next_state = next_state.flatten()
-            agent.store_transition(state, action, reward)
+        while not done and step < config["training"]["max_steps"]:
+            action = agent.act(state)
+            next_state, reward, done, info = env.step(action)
+            episode_data.append((state, action, reward))
+
             state = next_state
             total_reward += reward
-            if done or truncated:
-                break
+            step += 1
 
-        agent.update()
+            # Log portfolio and price history
+            env.history["portfolio_value"].append(info.get("portfolio_value", 0))
+            env.history["price"].append(info.get("price", 0))
 
-        wandb.log(
-            {"episode": episode, "reward": total_reward, "epsilon": agent.epsilon}
-        )
+        agent.learn(episode_data)
 
-        writer.add_scalar("Reward", total_reward, episode)
-        writer.add_scalar("Epsilon", agent.epsilon, episode)
+        print(f"[MC] Episode {episode + 1} - Reward: {total_reward:.2f}")
+        writer.add_scalar("Reward/Episode", total_reward, episode)
 
-        with print_lock:
-            print(
-                f"[MC] Episode {episode+1}: Reward={total_reward:.2f}, Epsilon={agent.epsilon:.4f}"
-            )
+        if (episode + 1) % config["training"]["save_every"] == 0:
+            agent.save(config["training"]["weights_path_mc"])
 
+    mc_history.update(env.history)  # Pass history back
     writer.close()
-    wandb.finish()
 
 
 def main():
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(train_dqn)
-        executor.submit(train_mc)
+    dqn_history = {}
+    mc_history = {}
+
+    thread_dqn = threading.Thread(target=train_dqn_thread, args=(dqn_history,))
+    thread_mc = threading.Thread(target=train_mc_thread, args=(mc_history,))
+
+    thread_dqn.start()
+    thread_mc.start()
+
+    thread_dqn.join()
+    thread_mc.join()
+
+    # Render TUI dashboard comparing both agents
+    render_dual_agent_dashboard(dqn_history, mc_history)
 
 
 if __name__ == "__main__":
