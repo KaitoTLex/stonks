@@ -5,7 +5,7 @@ from models.deepqlearning import DQNAgent
 from models.montecarlo import MCAgent
 from config import config
 from train.util import set_seed, get_writer, init_wandb, ReplayBuffer
-from tui.tui_dashboard import render_dual_agent_dashboard
+from tui.tui import render_dual_agent_dashboard
 
 
 def train_dqn_thread(dqn_history):
