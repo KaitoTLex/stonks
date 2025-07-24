@@ -1,6 +1,6 @@
 # train_parallel.py
 import threading
-from env.stock_env import StockTradingEnv
+from envs.trading_envs import StockTradingEnv
 from  models.deepqlearning import DQNAgent
 from  models.montecarlo import MonteCarloAgent
 from config import config
