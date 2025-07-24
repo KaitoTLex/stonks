@@ -18,52 +18,25 @@ from config import (
 
 
 def get_random_quarter_start(years_range=(2023, 2025)):
-    today = datetime.date.today()
-# Determine the earliest date to consider (approximately 730 days ago)
-start_date_limit = today - datetime.timedelta(days=730)
-
-# List to store all possible first days of months within the last 730 days
-possible_first_days_of_months = []
-
-# Start from the first day of the month of the start_date_limit
-current_year = start_date_limit.year
-current_month = start_date_limit.month
-
-# Loop through years and months until we reach or pass the current month/year
-# This ensures we cover all relevant months within the 730-day window
-while (current_year < today.year) or \
-        (current_year == today.year and current_month <= today.month):
-    try:
-        # Create a date object for the first day of the current month
-        # This handles cases where the start_date_limit might be in the middle of a month
-        date_to_add = datetime.date(current_year, current_month, 1)
-
-        # Only add dates that are within the last 730 days (inclusive of start_date_limit)
-        # and not in the future
-        if start_date_limit <= date_to_add <= today:
-            possible_first_days_of_months.append(date_to_add)
-
-    except ValueError:
-        # This can happen if current_month is invalid (e.g., 13),
-        # but our logic should prevent this by resetting month to 1.
-        # Included for robustness, though less likely with the current loop structure.
-        pass
-
-    # Move to the next month
-    current_month += 1
-    if current_month > 12:
-        current_month = 1
-        current_year += 1
-
-# If for some reason no months were found (e.g., very narrow range or error),
-# default to today's month's first day.
-if not possible_first_days_of_months:
-    return datetime.date(today.year, today.month, 1)
-
-# Randomly select one of the collected first days of months
-random_date = random.choice(possible_first_days_of_months)
-
-return random_date 
+   def get_random_date_start() -> datetime:
+    today = datetime.today()
+    # Calculate the earliest allowed date (730 days ago)
+    earliest_date = today - timedelta(days=730)
+    
+    # Create list of first-of-month dates from earliest_date to today
+    first_of_months = []
+    current = datetime(earliest_date.year, earliest_date.month, 1)
+    
+    while current <= today:
+        first_of_months.append(current)
+        # Move to next month
+        if current.month == 12:
+            current = datetime(current.year + 1, 1, 1)
+        else:
+            current = datetime(current.year, current.month + 1, 1)
+    
+    # Pick one at random
+    return random.choice(first_of_months) 
     # year = random.randint(years_range[0], years_range[1])
     # quarter = random.randint(1, 4)
     # month = random.randint(1,12)
