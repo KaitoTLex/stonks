@@ -100,7 +100,7 @@ class StockTradingEnv(gym.Env):
 
         # Pick random quarter start date
         quarter_start = get_random_quarter_start()
-        quarter_end = quarter_start + timedelta(days=90)
+        quarter_end = quarter_start + timedelta(days=29)
 
         # Download data for all selected tickers
         self.price_data = {}
