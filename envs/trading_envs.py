@@ -17,7 +17,7 @@ from config import (
 )
 
 
-def get_random_quarter_start(years_range=(2015, 2023)):
+def get_random_quarter_start(years_range=(2005, 2023)):
     year = random.randint(years_range[0], years_range[1])
     quarter = random.randint(1, 4)
     month = (quarter - 1) * 3 + 1

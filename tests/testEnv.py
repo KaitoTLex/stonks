@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
 from envs.trading_envs import StockTradingEnv
-from agents.dqn_agent import DQNAgent
-from agents.mc_agent import MCAgent
+from  models.deepqlearning import DQNAgent
+from  models.montecarlo import MCAgent
 from config import NUM_STOCKS_PER_EPISODE, INITIAL_BALANCE
 
 

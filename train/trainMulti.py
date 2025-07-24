@@ -1,8 +1,8 @@
 # train_parallel.py
 import threading
 from env.stock_env import StockTradingEnv
-from agents.dqn_agent import DQNAgent
-from agents.mc_agent import MonteCarloAgent
+from  models.deepqlearning import DQNAgent
+from  models.montecarlo import MonteCarloAgent
 from config import config
 from utils import set_seed, get_writer, init_wandb, ReplayBuffer
 from tui.tui_dashboard import render_dual_agent_dashboard

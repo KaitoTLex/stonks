@@ -7,10 +7,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-self.model = YourModel().to(device)
-state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
-
 
 class QNetwork(nn.Module):
     def __init__(self, obs_dim, action_dim):
