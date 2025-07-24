@@ -1,12 +1,16 @@
 # config.py
 
 CUSTOM_STOCK_LIST = [
-"NVDA", "MSFT", "AAPL", "AMZN", "META", "AVGO", "GOOGL", "GOOG", "BRK.B", "TSLA", "JPM", "WMT", "LLY", "V", "ORCL", "MA", "NFLX", "XOM", "COST", "JNJ", "HD", "PG", "PLTR", "BAC", "ABBV","NVDA", "MSFT", "AAPL", "AMZN", "GOOG", "META", "AVGO", "TSM", "TSLA", "BRK-B", "JPM", "WMT", "LLY", "V", "ORCL", "TCEHY", "MA", "NFLX", "XOM", "COST", "JNJ", "HD", "PG", "PLTR", "BAC","GS", "MSFT", "CAT", "HD", "V", "SHW", "AXP", "AMGN", "MCD", "JPM", "UNH", "CRM", "IBM", "TRV", "HON", "BA", "AMZN", "AAPL", "NVDA", "JNJ", "PG", "CVX", "MMM", "DIS", "WMT"
+"NVDA", "MSFT", "AAPL", "AMZN", "META", "AVGO", "GOOGL", "GOOG", "TSLA", "JPM", "WMT", "LLY", "V", "ORCL", "MA", "NFLX", "XOM", "COST", "JNJ", "HD", "PG", "PLTR", "BAC", "ABBV","NVDA", "MSFT", "AAPL", "AMZN", "GOOG", "META", "AVGO", "TSM", "TSLA", "BRK-B", "JPM", "WMT", "LLY", "V", "ORCL", "TCEHY", "MA", "NFLX", "XOM", "COST", "JNJ", "HD", "PG", "PLTR", "BAC","GS", "MSFT", "CAT", "HD", "V", "SHW", "AXP", "AMGN", "MCD", "JPM", "UNH", "CRM", "IBM", "TRV", "HON", "BA", "AMZN", "AAPL", "NVDA", "JNJ", "PG", "CVX", "MMM", "DIS", "WMT"
 ]
 
 NUM_STOCKS_PER_EPISODE = 15  # Number of tickers agent trades simultaneously
 
 INITIAL_BALANCE = 10000.0  # Starting cash for agent
+
+OBSERVATION_WINDOW_SIZE = 24 #Hours raw data sure
+
+SLIPPAGE_PERCENT = 0.001
 
 # Reward weights
 ALPHA_REWARD = 1.0  # portfolio value change weight
@@ -14,12 +18,12 @@ BETA_REWARD = 0.5  # sharpe ratio weight
 GAMMA_REWARD = 0.2  # per-trade profit weight
 
 # Episode length in hours (approx 3 months)
-EPISODE_HOURS = 24 * 90
+EPISODE_HOURS = 168
 
 # Agent training params (keep your previous config or extend as needed)
 config = {
     "env": {
-        "window_size": 1,  # we only use 1-hour raw data per step here
+        "window_size": OBSERVATION_WINDOW_SIZE,  # we only use 1-hour raw data per step here
         "initial_balance": INITIAL_BALANCE,
     },
     "agent": {

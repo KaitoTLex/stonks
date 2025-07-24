@@ -5,231 +5,235 @@ import pandas as pd
 import yfinance as yf
 import random
 from datetime import datetime, timedelta
-from scipy.stats import norm
+
+# Import configuration variables
 from config import (
     CUSTOM_STOCK_LIST,
     NUM_STOCKS_PER_EPISODE,
-    ALPHA_REWARD,
-    BETA_REWARD,
-    GAMMA_REWARD,
     INITIAL_BALANCE,
+    OBSERVATION_WINDOW_SIZE,
     EPISODE_HOURS,
+    SLIPPAGE_PERCENT
 )
 
+class DataManager:
+    """
+    Handles downloading, storing, and providing historical stock data efficiently.
+    Data is downloaded once and reused for all episodes.
+    """
+    def __init__(self, tickers: list, period: str = "730d", interval: str = "1h"):
+        """
+        Initializes the DataManager and downloads data for all specified tickers.
+        
+        Args:
+            tickers (list): A list of stock tickers.
+            period (str): The period to download data for (e.g., "730d").
+            interval (str): The data interval (e.g., "1h").
+        """
+        self.data = {}
+        self.tickers = tickers
+        print("--- Downloading Historical Data ---")
+        
+        # Download data for all tickers and store it in a dictionary
+        df = yf.download(tickers, period=period, interval=interval, progress=True)
+        
+        if df.empty:
+            raise ValueError("No data downloaded. Check tickers and internet connection.")
+            
+        # Pre-process and store data for each ticker
+        for ticker in tickers:
+            # Extract columns for this ticker, handling multi-level columns
+            ticker_df = df.xs(ticker, level=1, axis=1).copy()
+            ticker_df.dropna(inplace=True)
+            if not ticker_df.empty:
+                self.data[ticker] = ticker_df
+        
+        print("--- Data Download Complete ---")
+        if not self.data:
+            raise ValueError("Could not retrieve valid data for any tickers.")
 
-def get_random_date_start() -> datetime:
-    today = datetime.today()
-    # Calculate the earliest allowed date (730 days ago)
-    earliest_date = today - timedelta(days=730)
-    
-    # Create list of first-of-month dates from earliest_date to today
-    first_of_months = []
-    current = datetime(earliest_date.year, earliest_date.month, 1)
-    
-    while current <= today:
-        first_of_months.append(current)
-        # Move to next month
-        if current.month == 12:
-            current = datetime(current.year + 1, 1, 1)
-        else:
-            current = datetime(current.year, current.month + 1, 1)
-    
-    # Pick one at random
-    return random.choice(first_of_months) 
-    # year = random.randint(years_range[0], years_range[1])
-    # quarter = random.randint(1, 4)
-    # month = random.randint(1,12)
-    # return datetime(year, month, 1)
+    def get_episode_data(self):
+        """
+        Selects a random one-month slice of data for a new episode.
 
+        Returns:
+            tuple: A tuple containing:
+                - dict: DataFrames for the selected tickers and date range.
+                - int: The total number of steps in the episode.
+        """
+        # Ensure there's enough data for a full episode
+        min_length = OBSERVATION_WINDOW_SIZE + EPISODE_HOURS
+        
+        # Find a valid start index from a random ticker's data
+        valid_tickers = [t for t in self.tickers if len(self.data.get(t, [])) > min_length]
+        if not valid_tickers:
+            raise ValueError("No tickers have enough data for a full episode.")
+        
+        reference_ticker = random.choice(valid_tickers)
+        max_start_index = len(self.data[reference_ticker]) - min_length
+        start_index = random.randint(0, max_start_index)
+        end_index = start_index + min_length
+        
+        # Slice the data for all tickers for the chosen period
+        episode_data = {}
+        for ticker in self.tickers:
+            if ticker in self.data:
+                episode_data[ticker] = self.data[ticker].iloc[start_index:end_index]
 
-def download_data(ticker, start, end):
-    df = yf.download(ticker, start=start, end=end, interval="1h", progress=False)
-    df = df.dropna()
-    return df[["Open", "High", "Low", "Close", "Volume"]]
+        return episode_data, min_length
 
 
 class StockTradingEnv(gym.Env):
+    """
+    A stock trading environment for reinforcement learning, compatible with Gymnasium.
+    """
     metadata = {"render_modes": ["human"]}
 
     def __init__(self):
         super().__init__()
-        # Validate config
-        if len(CUSTOM_STOCK_LIST) < NUM_STOCKS_PER_EPISODE:
-            raise ValueError(
-                f"CUSTOM_STOCK_LIST length ({len(CUSTOM_STOCK_LIST)}) < NUM_STOCKS_PER_EPISODE ({NUM_STOCKS_PER_EPISODE})"
-            )
+        
+        print("Initializing Trading Environment...")
+        self.data_manager = DataManager(CUSTOM_STOCK_LIST)
+        self.stock_list = self.data_manager.tickers
 
-        # Action: for each stock, 0=hold, 1=buy, 2=sell
+        # Action space: For each stock, 0=Hold, 1=Buy, 2=Sell
         self.action_space = spaces.MultiDiscrete([3] * NUM_STOCKS_PER_EPISODE)
 
-        # Observation: window of 1 hour raw OHLCV per stock (shape: stocks x features)
-        # For simplicity, 1-hour window (current hour only), 5 features per stock
+        # Observation space: For each stock, a window of past OHLCV data.
+        # Shape: (Num Stocks, Window Size, Features)
         self.observation_space = spaces.Box(
-            low=0,
-            high=np.inf,
-            shape=(NUM_STOCKS_PER_EPISODE, 5),
+            low=-np.inf, high=np.inf,
+            shape=(NUM_STOCKS_PER_EPISODE, OBSERVATION_WINDOW_SIZE, 5),
             dtype=np.float32,
         )
 
-        self.initial_balance = INITIAL_BALANCE
-
-        # Placeholder for loaded data for selected tickers (dict: ticker -> dataframe)
-        self.price_data = {}
+        # Environment state variables
         self.selected_tickers = []
+        self.episode_data = {}
         self.current_step = 0
-
-        # Portfolio state
+        self.episode_length = 0
+        
+        # Portfolio state variables
+        self.initial_balance = INITIAL_BALANCE
         self.cash_balance = 0.0
-        self.holdings = None  # shares held per stock (np.array)
-        self.last_portfolio_value = None
-
-        # Track trades in current step (for reward)
-        self.trades_profit = 0.0
-
-        # Keep history of portfolio values to compute Sharpe
-        self.portfolio_values_history = []
-
-        self.episode_length = (
-            EPISODE_HOURS  # e.g. 3 months * ~30 days * 24 hrs = 2160 hours
-        )
+        self.holdings = np.zeros(NUM_STOCKS_PER_EPISODE, dtype=np.float32)
+        self.last_portfolio_value = 0.0
+        print("Environment Initialized.")
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.selected_tickers = random.sample(CUSTOM_STOCK_LIST, NUM_STOCKS_PER_EPISODE)
+        
+        # Select a random subset of stocks for the episode
+        self.selected_tickers = random.sample(self.stock_list, NUM_STOCKS_PER_EPISODE)
+        
+        # Get a new slice of data for the episode
+        self.episode_data, self.episode_length = self.data_manager.get_episode_data()
 
-        # Pick random quarter start date
-        month_begin = get_random_date_start()
-        month_end = month_begin + timedelta(days=28)
+        # Filter the data for the selected tickers
+        self.current_episode_data = {t: self.episode_data[t] for t in self.selected_tickers}
 
-        # Download data for all selected tickers
-        self.price_data = {}
-        for ticker in self.selected_tickers:
-            df = download_data(
-                ticker,
-                month_begin.strftime("%Y-%m-%d"),
-                month_end.strftime("%Y-%m-%d"),
-            )
-            if len(df) < self.episode_length:
-                raise RuntimeError(f"Not enough data for ticker {ticker} in period")
-            self.price_data[ticker] = df.reset_index(drop=True)
-
-        self.current_step = 0
+        # Initialize portfolio
+        self.current_step = OBSERVATION_WINDOW_SIZE
         self.cash_balance = self.initial_balance
         self.holdings = np.zeros(NUM_STOCKS_PER_EPISODE, dtype=np.float32)
-        self.trades_profit = 0.0
-        self.portfolio_values_history = []
-
         self.last_portfolio_value = self._calculate_portfolio_value()
 
-        return self._get_obs(), {}
+        obs = self._get_obs()
+        info = self._get_info()
+        
+        return obs, info
 
     def _get_obs(self):
-        # Gather latest OHLCV for each ticker at current step
+        """
+        Gets the observation for the current step.
+        The observation is a window of the last N hours of data for each stock.
+        """
         obs = []
-        for i, ticker in enumerate(self.selected_tickers):
-            data = self.price_data[ticker].iloc[self.current_step]
-            obs.append(
-                [data["Open"], data["High"], data["Low"], data["Close"], data["Volume"]]
-            )
+        for ticker in self.selected_tickers:
+            # Get the window of data up to the current step
+            window = self.current_episode_data[ticker].iloc[
+                self.current_step - OBSERVATION_WINDOW_SIZE : self.current_step
+            ]
+            # Select only the OHLCV columns
+            ohlcv_window = window[['Open', 'High', 'Low', 'Close', 'Volume']].values
+            obs.append(ohlcv_window)
+        
         return np.array(obs, dtype=np.float32)
 
+    def _get_info(self):
+        """Returns auxiliary information about the current state."""
+        return {
+            "portfolio_value": self.last_portfolio_value,
+            "cash_balance": self.cash_balance,
+            "holdings": self.holdings.copy(),
+            "selected_tickers": self.selected_tickers,
+        }
+
     def _calculate_portfolio_value(self):
+        """Calculates the total value of the portfolio (cash + holdings)."""
         value = self.cash_balance
         for i, ticker in enumerate(self.selected_tickers):
-            current_close = self.price_data[ticker].iloc[self.current_step]["Close"]
-            value += self.holdings[i] * current_close
+            current_price = self.current_episode_data[ticker].iloc[self.current_step]['Close']
+            value += self.holdings[i] * current_price
         return value
 
     def step(self, actions):
         """
-        actions: array-like, length NUM_STOCKS_PER_EPISODE
-        each element: 0=hold, 1=buy, 2=sell
-        """
+        Executes one time step within the environment.
 
+        Args:
+            actions (np.ndarray): An array of actions (0:Hold, 1:Buy, 2:Sell).
+        """
         assert len(actions) == NUM_STOCKS_PER_EPISODE
 
-        self.trades_profit = 0.0
-
-        # Execute trades sequentially
+        # Execute trades for each stock
         for i, action in enumerate(actions):
             ticker = self.selected_tickers[i]
-            current_price = self.price_data[ticker].iloc[self.current_step]["Close"]
+            base_price = self.current_episode_data[ticker].iloc[self.current_step]['Close']
 
-            # Simple slippage model
-            slippage_factor = np.random.uniform(0.998, 1.002)
-            effective_price = current_price * slippage_factor
-
-            if action == 1:  # Buy one share if possible
-                if self.cash_balance >= effective_price:
+            # Simulate slippage for buy/sell actions
+            if action == 1:  # Buy
+                buy_price = base_price * (1 + SLIPPAGE_PERCENT * random.uniform(0, 1))
+                if self.cash_balance >= buy_price:
                     self.holdings[i] += 1
-                    self.cash_balance -= effective_price
-                    # No immediate profit for buying
-                else:
-                    pass  # no buy if insufficient cash
-
-            elif action == 2:  # Sell one share if holding any
-                if self.holdings[i] >= 1:
+                    self.cash_balance -= buy_price
+            elif action == 2:  # Sell
+                if self.holdings[i] > 0:
+                    sell_price = base_price * (1 - SLIPPAGE_PERCENT * random.uniform(0, 1))
                     self.holdings[i] -= 1
-                    self.cash_balance += effective_price
-                    # Profit is difference between sell price and average cost?
-                    # Here we approximate profit as sell price - current_price (simplified)
-                    self.trades_profit += (
-                        effective_price  # count revenue here, profit calc below
-                    )
-
-            # else action == 0: hold, no trade
-
-        # Update portfolio value and compute reward
+                    self.cash_balance += sell_price
+        
+        # Update portfolio value and calculate reward
         portfolio_value = self._calculate_portfolio_value()
-        delta_value = portfolio_value - self.last_portfolio_value
-
-        self.portfolio_values_history.append(portfolio_value)
+        reward = portfolio_value - self.last_portfolio_value
         self.last_portfolio_value = portfolio_value
 
-        # Compute Sharpe ratio on portfolio returns (if enough history)
-        reward_sharpe = 0.0
-        if len(self.portfolio_values_history) > 2:
-            returns = (
-                np.diff(self.portfolio_values_history)
-                / self.portfolio_values_history[:-1]
-            )
-            mean_ret = np.mean(returns)
-            std_ret = np.std(returns) + 1e-9  # avoid div0
-            reward_sharpe = mean_ret / std_ret
-
-        # Normalize terms (roughly)
-        norm_delta_value = delta_value / (self.initial_balance + 1e-9)
-        norm_trades_profit = self.trades_profit / (self.initial_balance + 1e-9)
-        norm_sharpe = reward_sharpe  # already ratio
-
-        reward = (
-            ALPHA_REWARD * norm_delta_value
-            + BETA_REWARD * norm_sharpe
-            + GAMMA_REWARD * norm_trades_profit
-        )
-
+        # Move to the next time step
         self.current_step += 1
-        done = self.current_step >= (self.episode_length - 1)
+        
+        # Check if the episode is done
+        done = self.current_step >= self.episode_length -1
 
-        info = {
-            "portfolio_value": portfolio_value,
-            "cash_balance": self.cash_balance,
-            "holdings": self.holdings.copy(),
-            "selected_tickers": self.selected_tickers,
-            "reward_components": {
-                "delta_value": norm_delta_value,
-                "sharpe": norm_sharpe,
-                "trade_profit": norm_trades_profit,
-            },
-        }
+        obs = self._get_obs()
+        info = self._get_info()
+        
+        # The 'truncated' flag is not used here but is part of the standard API
+        truncated = False
 
-        return self._get_obs(), reward, done, False, info
+        return obs, reward, done, truncated, info
 
     def render(self, mode="human"):
-        print(
-            f"Step: {self.current_step}, Portfolio value: {self.last_portfolio_value:.2f}, "
-            f"Cash: {self.cash_balance:.2f}, Holdings: {self.holdings}"
-        )
+        """Renders the environment's state."""
+        if mode == "human":
+            print(f"Step: {self.current_step - OBSERVATION_WINDOW_SIZE}/{EPISODE_HOURS}")
+            print(f"Portfolio Value: {self.last_portfolio_value:,.2f}")
+            print(f"Cash Balance: {self.cash_balance:,.2f}")
+            holdings_str = [f"{ticker}: {shares:.2f}" for ticker, shares in zip(self.selected_tickers, self.holdings)]
+            print(f"Holdings: {', '.join(holdings_str)}")
+            print("-" * 30)
 
     def close(self):
+        """Cleans up the environment."""
+        print("Closing environment.")
         pass
+

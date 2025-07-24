@@ -9,14 +9,14 @@ from config import NUM_STOCKS_PER_EPISODE
 def test_env_reset_and_step():
     env = StockTradingEnv()
     obs, _ = env.reset()
-    assert obs.shape == (NUM_STOCKS_PER_EPISODE, 5)
+    assert obs.shape == (NUM_STOCKS_PER_EPISODE, 15)
     assert env.cash_balance == env.initial_balance
     assert env.current_step == 0
 
     # Test one step with hold action
     actions = np.zeros(NUM_STOCKS_PER_EPISODE, dtype=int)  # all hold
     obs, reward, done, truncated, info = env.step(actions)
-    assert obs.shape == (NUM_STOCKS_PER_EPISODE, 5)
+    assert obs.shape == (NUM_STOCKS_PER_EPISODE, 15)
     assert isinstance(reward, float)
     assert isinstance(done, bool)
     assert isinstance(truncated, bool)
