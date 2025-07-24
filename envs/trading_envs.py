@@ -106,8 +106,8 @@ class StockTradingEnv(gym.Env):
         for ticker in self.selected_tickers:
             df = download_data(
                 ticker,
-                quarter_start.strftime("%Y-%m-%d"),
-                quarter_end.strftime("%Y-%m-%d"),
+                month_begin.strftime("%Y-%m-%d"),
+                month_end.strftime("%Y-%m-%d"),
             )
             if len(df) < self.episode_length:
                 raise RuntimeError(f"Not enough data for ticker {ticker} in period")
