@@ -4,7 +4,7 @@ from envs.trading_envs import StockTradingEnv
 from models.deepqlearning import DQNAgent
 from models.montecarlo import MCAgent
 from config import config
-from utils import set_seed, get_writer, init_wandb, ReplayBuffer
+from util import set_seed, get_writer, init_wandb, ReplayBuffer
 from tui.tui_dashboard import render_dual_agent_dashboard
 
 
