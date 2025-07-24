@@ -1,5 +1,5 @@
 {
-  description = "Stock RL project with tests and CI, multi-arch compatible";
+  description = "Stonks";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -8,7 +8,6 @@
 
   outputs =
     {
-      self,
       nixpkgs,
       flake-utils,
       ...
@@ -16,61 +15,62 @@
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        overlays = [
+          (final: prev: {
+            pytorch = prev.pytorch.override {
+              cudaSupport = true;
+              cudatoolkit = prev.cudaPackages.cudatoolkit_11;
+            };
+          })
+        ];
+
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = overlays;
+          config.allowUnfree = true; # for CUDA
+        };
+
+        pythonEnv = pkgs.python310.withPackages (
+          ps: with ps; [
+            pip
+            numpy
+            pandas
+            matplotlib
+            requests
+            scipy
+            gymnasium
+            tensorboard
+            wandb
+            flake8
+            black
+            isort
+            pytest
+            yfinance
+            rich
+
+            # Torch + CUDA from override
+            pkgs.pytorch
+          ]
+        );
       in
       {
-        packages.default = pkgs.mkShell {
-          name = "stock-rl-shell";
-
-          buildInputs = with pkgs; [
-            python310
-            python310Packages.pip
-            python310Packages.numpy
-            python310Packages.pandas
-            python310Packages.matplotlib
-            python310Packages.tensorboard
-            python310Packages.wandb
-            python310Packages.requests
-            python310Packages.setuptools
-            python310Packages.wheel
-            python310Packages.scipy
-            python310Packages.gcc # for compiling packages if needed
+        devShell = pkgs.mkShell {
+          name = "rl-stock-trader-shell";
+          buildInputs = [
+            pythonEnv
+            pkgs.cudaPackages.cudatoolkit_11
+            pkgs.cudaPackages.cudnn
+            pkgs.cudaPackages.cublas
+            pkgs.cudaPackages.cufft
+            pkgs.cudaPackages.nccl
           ];
 
           shellHook = ''
-            export PYTHONPATH=$(pwd)
-            # Upgrade pip and install python deps if needed
-            python3 -m pip install --upgrade pip
-            python3 -m pip install -r requirements.txt
+            export PYTHONNOUSERSITE="true"
+            export CUDA_HOME=${pkgs.cudaPackages.cudatoolkit_11}
+            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${pkgs.cudaPackages.cudatoolkit_11}/lib
+            echo "Python with PyTorch (CUDA-enabled) ready."
           '';
-        };
-
-        devShell = self.packages.${system};
-
-        checks = pkgs.stdenv.mkDerivation {
-          pname = "stock-rl-tests";
-          version = "0.1";
-
-          nativeBuildInputs = [
-            pkgs.python310
-            pkgs.python310Packages.pytest
-          ];
-
-          src = self;
-
-          buildPhase = ''
-            python3 -m pip install --upgrade pip
-            python3 -m pip install -r requirements.txt
-          '';
-
-          checkPhase = ''
-            pytest tests/
-          '';
-
-          meta = with pkgs.lib; {
-            description = "Run unit tests for Stock RL";
-            license = licenses.mit;
-          };
         };
       }
     );

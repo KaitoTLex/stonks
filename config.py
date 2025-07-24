@@ -133,8 +133,15 @@ config = {
     },
     "training": {
         "episodes": 200,
-        "max_steps": EPISODE_HOURS,
+        "max_steps": 500,
         "save_every": 25,
-        "weights_path": "models/dqn_weights.pth",
+        "weights_path_dqn": "results/models/dqn_weights.pth",
+        "weights_path_mc": "results/models/mc_weights.pth",
+    },
+    "logging": {"tensorboard_dir": "results/logs", "wandb_project": "stock-rl-agents"},
+    "paths": {
+        "utils_module": "utils.py",
+        "train_dqn_script": "train/train_dqn.py",
+        "train_mc_script": "train/train_mc.py",
     },
 }
