@@ -1,7 +1,7 @@
 # config.py
 
 CUSTOM_STOCK_LIST = [
- "MSFT", "AAPL", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "JPM", "V", "JNJ", "WMT", "XOM", "UNH", "PG", "MA", "HD", "CVX", "MRK", "BAC", "PFE", "KO", "ABBV", "COST", "TMO", "PEP", "AVGO", "CMCSA", "DIS", "NFLX", "ADBE", "CSCO", "ACN", "CRM", "INTC", "QCOM", "TXN", "AMGN", "MSI", "NEE", "UPS", "LOW", "CVS", "IBM", "MDT", "HON", "GE", "PLD", "SBUX", "BKNG", "AMD","SQ", "ROKU", "PTON", "COIN", "MARA", "RIOT", "PLTR", "UPST", "AFRM", "HOOD", "ZM", "DOCN", "LCID", "NKLA", "BYND", "CVNA", "MSTR", "GME", "AMC", "BB", "WKHS", "SPCE", "SAVA", "CRSP", "EDIT", "BEAM", "ARKK", "SOXL", "LABD", "UVXY", "VIXY", "TQQQ", "SQQQ", "DRIV", "ICLN", "TAN", "XPEV", "NIO", "LI", "DASH", "UBER", "LYFT", "SNOW", "DDOG", "NET"
+"NVDA", "MSFT", "AAPL", "AMZN", "META", "AVGO", "GOOGL", "GOOG", "BRK.B", "TSLA", "JPM", "WMT", "LLY", "V", "ORCL", "MA", "NFLX", "XOM", "COST", "JNJ", "HD", "PG", "PLTR", "BAC", "ABBV","NVDA", "MSFT", "AAPL", "AMZN", "GOOG", "META", "AVGO", "TSM", "TSLA", "BRK-B", "JPM", "WMT", "LLY", "V", "ORCL", "TCEHY", "MA", "NFLX", "XOM", "COST", "JNJ", "HD", "PG", "PLTR", "BAC","GS", "MSFT", "CAT", "HD", "V", "SHW", "AXP", "AMGN", "MCD", "JPM", "UNH", "CRM", "IBM", "TRV", "HON", "BA", "AMZN", "AAPL", "NVDA", "JNJ", "PG", "CVX", "MMM", "DIS", "WMT"
 ]
 
 NUM_STOCKS_PER_EPISODE = 15  # Number of tickers agent trades simultaneously
