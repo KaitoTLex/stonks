@@ -17,8 +17,7 @@ from config import (
 )
 
 
-def get_random_quarter_start(years_range=(2023, 2025)):
-   def get_random_date_start() -> datetime:
+def get_random_date_start() -> datetime:
     today = datetime.today()
     # Calculate the earliest allowed date (730 days ago)
     earliest_date = today - timedelta(days=730)
@@ -99,8 +98,8 @@ class StockTradingEnv(gym.Env):
         self.selected_tickers = random.sample(CUSTOM_STOCK_LIST, NUM_STOCKS_PER_EPISODE)
 
         # Pick random quarter start date
-        quarter_start = get_random_quarter_start()
-        quarter_end = quarter_start + timedelta(days=29)
+        month_begin = get_random_date_start()
+        month_end = month_begin + timedelta(days=28)
 
         # Download data for all selected tickers
         self.price_data = {}
