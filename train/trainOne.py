@@ -1,8 +1,8 @@
 import torch
 import wandb
 from torch.utils.tensorboard import SummaryWriter
-from  envs.trading_envs import StockTradingEnv
-from  models.deepqlearning import DQNAgent
+from envs.trading_envs import StockTradingEnv
+from agents.dqn_agent import DQNAgent
 from config import config
 from utils import set_seed, get_writer, init_wandb, ReplayBuffer
 
