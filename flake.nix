@@ -1,30 +1,77 @@
 {
-  pkgs ? import <nixpkgs> { },
-}:
+  description = "Stock RL project with tests and CI, multi-arch compatible";
 
-pkgs.mkShell {
-  name = "stonks";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
 
-  buildInputs = [
-    pkgs.python310
-    pkgs.python310Packages.pip
-    pkgs.python310Packages.numpy
-    pkgs.python310Packages.pandas
-    pkgs.python310Packages.matplotlib
-    pkgs.python310Packages.scipy
-    pkgs.python310Packages.tensorboard
-    pkgs.python310Packages.requests
-    pkgs.python310Packages.setuptools
-    pkgs.python310Packages.wheel
-  ];
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      ...
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+      in
+      {
+        packages.default = pkgs.mkShell {
+          name = "stock-rl-shell";
 
-  shellHook = ''
-    export PYTHONPATH=$(pwd)
-  '';
+          buildInputs = with pkgs; [
+            python310
+            python310Packages.pip
+            python310Packages.numpy
+            python310Packages.pandas
+            python310Packages.matplotlib
+            python310Packages.tensorboard
+            python310Packages.wandb
+            python310Packages.requests
+            python310Packages.setuptools
+            python310Packages.wheel
+            python310Packages.scipy
+            python310Packages.gcc # for compiling packages if needed
+          ];
 
-  # We will use pip for these:
-  shellCommands = ''
-    python3 -m pip install --upgrade pip
-    python3 -m pip install yfinance gymnasium torch wandb
-  '';
+          shellHook = ''
+            export PYTHONPATH=$(pwd)
+            # Upgrade pip and install python deps if needed
+            python3 -m pip install --upgrade pip
+            python3 -m pip install -r requirements.txt
+          '';
+        };
+
+        devShell = self.packages.${system};
+
+        checks = pkgs.stdenv.mkDerivation {
+          pname = "stock-rl-tests";
+          version = "0.1";
+
+          nativeBuildInputs = [
+            pkgs.python310
+            pkgs.python310Packages.pytest
+          ];
+
+          src = self;
+
+          buildPhase = ''
+            python3 -m pip install --upgrade pip
+            python3 -m pip install -r requirements.txt
+          '';
+
+          checkPhase = ''
+            pytest tests/
+          '';
+
+          meta = with pkgs.lib; {
+            description = "Run unit tests for Stock RL";
+            license = licenses.mit;
+          };
+        };
+      }
+    );
 }
